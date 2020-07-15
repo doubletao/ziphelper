@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "ZipHelperImp.h"
 #include "minizip\unzip.h"
+#include <codecvt>
 using namespace ZipHelper;
 
 CZipHelperImp::CZipHelperImp()
@@ -27,8 +28,10 @@ STDMETHODIMP CZipHelperImp::UnInit()
 
 STDMETHODIMP_(ZipHelperRet) CZipHelperImp::LoadFileBuff(LPCTSTR IN strZipPath, LPCTSTR IN strFileName, IN byte * pBuff, OUT unsigned long & nBufSize)
 {
-	std::string strZipPathA = CW2A(strZipPath, CP_UTF8);
-	std::string strFileNameA = CW2A(strFileName, CP_UTF8);
+	std::wstring_convert<std::codecvt<wchar_t, char, std::mbstate_t>>
+		converter(new std::codecvt<wchar_t, char, std::mbstate_t>("CHS"));
+	std::string strZipPathA = converter.to_bytes(strZipPath);
+	std::string strFileNameA = converter.to_bytes(strFileName);
 	//打开压缩文件
 	unzFile uf = unzOpen64(strZipPathA.c_str());
 	if (uf)
