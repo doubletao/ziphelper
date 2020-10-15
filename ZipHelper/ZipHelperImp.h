@@ -18,6 +18,7 @@ namespace ZipHelper
 		STDMETHOD(UnInit)();
 		STDMETHOD_(ZipHelperRet, LoadFileBuff)(LPCTSTR IN strZipPath, LPCTSTR IN strFileName, IN byte * pBuff, OUT unsigned long & nBufSize);
 		STDMETHOD_(ZipHelperRet, LoadFileList)(LPCTSTR IN strZipPath, IN char * pJson, OUT unsigned long & nJsonSize, OUT unsigned long & nKey);
+		STDMETHOD_(ZipHelperRet, CompressedFile)(LPCTSTR IN strZipPath, LPCTSTR IN strFileName);
 	};
 
 

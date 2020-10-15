@@ -19,6 +19,7 @@ namespace ZipHelper
 		OpenFailed,
 		ReadFailed,
 		NotEnoughBufSize, //bufsize不足
+		BuildZipFailed,
 	};
 
 	//interface __declspec(uuid("{E327EE17-6D96-4F96-8323-B59C0C886947}"))
@@ -29,6 +30,7 @@ namespace ZipHelper
 		STDMETHOD(UnInit)() = 0;
 		STDMETHOD_(ZipHelperRet, LoadFileBuff)(LPCTSTR IN strZipPath, LPCTSTR IN strFileName, IN byte * pBuff, OUT unsigned long & nBufSize) = 0;
 		STDMETHOD_(ZipHelperRet, LoadFileList)(LPCTSTR IN strZipPath, IN char * pJson, OUT unsigned long & nJsonSize, OUT unsigned long & nKey) = 0;
+		STDMETHOD_(ZipHelperRet, CompressedFile)(LPCTSTR IN strZipPath, LPCTSTR IN strFileName) = 0;
 	};
 
 	typedef ATL::CComPtr<IZipHelper> _ZipHelperPtr;

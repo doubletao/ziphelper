@@ -1,7 +1,11 @@
 ﻿#include "stdafx.h"
 #include "ZipHelperImp.h"
 #include "minizip\unzip.h"
+#include "minizip\zip.h"
+#include <atlconv.h> 
+#include <fstream>   
 #include <codecvt>
+#include <io.h>
 using namespace ZipHelper;
 
 CZipHelperImp::CZipHelperImp()
@@ -233,6 +237,189 @@ STDMETHODIMP_(ZipHelperRet) CZipHelperImp::LoadFileList(LPCTSTR IN strZipPath, I
 		ErrorLog("CZipHelperImp::LoadFileBuff:open ", strZipPathA.c_str(), " failed");
 		return ZipHelperRet::OpenFailed;
 	}
+	return ZipHelperRet::Success;
+}
+
+// void EnumDirFiles(const std::string& dirPrefix, const std::string& dirName, vector<string>& vFiles)
+// {
+// 	if (dirPrefix.empty() || dirName.empty())
+// 		return;
+// 	std::string dirNameTmp = dirName;
+// 	std::string dirPre = dirPrefix;
+// 
+// 	if (dirNameTmp.find_last_of("/") != dirNameTmp.length() - 1)
+// 		dirNameTmp += "/";
+// 	if (dirNameTmp[0] == '/')
+// 		dirNameTmp = dirNameTmp.substr(1);
+// 	if (dirPre.find_last_of("/") != dirPre.length() - 1)
+// 		dirPre += "/";
+// 
+// 	std::string path;
+// 
+// 	path = dirPre + dirNameTmp;
+// 
+// 
+// 	struct stat fileStat;
+// 	DIR* pDir = opendir(path.c_str());
+// 	if (!pDir) return;
+// 
+// 	struct dirent* pDirEnt = NULL;
+// 	while ((pDirEnt = readdir(pDir)) != NULL)
+// 	{
+// 		if (strcmp(pDirEnt->d_name, ".") == 0 || strcmp(pDirEnt->d_name, "..") == 0)
+// 			continue;
+// 
+// 		string tmpDir = dirPre + dirNameTmp + pDirEnt->d_name;
+// 		if (stat(tmpDir.c_str(), &fileStat) != 0)
+// 			continue;
+// 
+// 		string innerDir = dirNameTmp + pDirEnt->d_name;
+// 		if (fileStat.st_mode & S_IFDIR == S_IFDIR)
+// 		{
+// 			EnumDirFiles(dirPrefix, innerDir, vFiles);
+// 			continue;
+// 		}
+// 
+// 		vFiles.push_back(innerDir);
+// 	}
+// 
+// 	if (pDir)
+// 		closedir(pDir);
+// }
+
+
+
+void AddFileToZip(zipFile zf, const char* fileNameInZip, const char* srcFile)
+{
+	FILE* srcfp = NULL;
+
+	//初始化写入zip的文件信息  
+	zip_fileinfo zi;
+	zi.tmz_date.tm_sec = zi.tmz_date.tm_min = zi.tmz_date.tm_hour =
+		zi.tmz_date.tm_mday = zi.tmz_date.tm_mon = zi.tmz_date.tm_year = 0;
+	zi.dosDate = 0;
+	zi.internal_fa = 0;
+	zi.external_fa = 0;
+
+	//如果srcFile为空，加入空目录  
+	char new_file_name[MAX_PATH];
+	memset(new_file_name, 0, sizeof(new_file_name));
+	strcat(new_file_name, fileNameInZip);
+	if (srcFile == NULL)
+	{
+		strcat(new_file_name, "/");
+	}
+
+	//在zip文件中创建新文件  
+	zipOpenNewFileInZip(zf, new_file_name, &zi, NULL, 0, NULL, 0, NULL, Z_DEFLATED, Z_DEFAULT_COMPRESSION);
+
+	if (srcFile != NULL)
+	{
+		//打开源文件  
+		srcfp = fopen(srcFile, "rb");
+		if (srcfp == NULL)
+		{
+			zipCloseFileInZip(zf); //关闭zip文件  
+			return;
+		}
+
+		//读入源文件并写入zip文件  
+		char buf[100 * 1024]; //buffer  
+		int numBytes = 0;
+		while (!feof(srcfp))
+		{
+			numBytes = fread(buf, 1, sizeof(buf), srcfp);
+			zipWriteInFileInZip(zf, buf, numBytes);
+			if (ferror(srcfp))
+				break;
+		}
+
+		//关闭源文件  
+		fclose(srcfp);
+	}
+
+	//关闭zip文件  
+	zipCloseFileInZip(zf);
+}
+
+void CollectFilesInDirToZip(zipFile zf, const CString& strPath, const CString& parentDir)
+{
+	USES_CONVERSION; //for W2CA 
+	CString strRelativePath;
+	WIN32_FIND_DATA next;
+	TCHAR pathname[MAX_PATH];
+	swprintf_s(pathname, L"%s\\*.*", strPath);
+	TCHAR buff[MAX_PATH];
+	TCHAR buffA[MAX_PATH];
+	HANDLE handle = FindFirstFile(pathname, &next);
+	if (handle == INVALID_HANDLE_VALUE)
+	{
+		return;
+	}
+
+	while (1)
+	{
+		if (FindNextFile(handle, &next) == FALSE)
+			return;
+		else
+		{
+			if (next.cFileName[0] == '.')  continue;//用FindNextFile刚开始有.或者..,我们要避免这种情况
+													/*memset(buff, 0, MAX_PATH);*/
+			if (parentDir == _T(""))
+			strRelativePath = next.cFileName;
+			else
+			strRelativePath = parentDir + _T("\\") + next.cFileName; //生成在zip文件中的相对路径  
+			swprintf_s(buff, L"%s\\%s", strPath, next.cFileName);//文件的绝对路径
+			if (next.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{
+				AddFileToZip(zf, CW2A(strRelativePath, CP_ACP), NULL);
+				CollectFilesInDirToZip(zf, buff, strRelativePath); //递归收集子目录文件 
+				continue;
+			}
+			AddFileToZip(zf, CW2A(strRelativePath, CP_ACP), W2CA(buff, CP_ACP)); //将文件添加到zip文件中
+		}
+	}
+
+// 	BOOL bWorking = finder.FindFile(strPath + _T("//*.*"));
+// 	while (bWorking)
+// 	{
+// 		bWorking = finder.FindNextFile();
+// 		if (finder.IsDots())
+// 			continue;
+// 
+// 		if (parentDir == _T(""))
+// 			strRelativePath = finder.GetFileName();
+// 		else
+// 			strRelativePath = parentDir + _T("//") + finder.GetFileName(); //生成在zip文件中的相对路径  
+// 
+// 		if (finder.IsDirectory())
+// 		{
+// 			AddFileToZip(zf, W2CA(strRelativePath), NULL); //在zip文件中生成目录结构  
+// 			CollectFilesInDirToZip(zf, finder.GetFilePath(), strRelativePath); //递归收集子目录文件  
+// 			continue;
+// 		}
+// 
+// 		AddFileToZip(zf, W2CA(strRelativePath), W2CA(finder.GetFilePath())); //将文件添加到zip文件中  
+// 	}
+}
+
+STDMETHODIMP_(ZipHelperRet) ZipHelper::CZipHelperImp::CompressedFile(LPCTSTR IN strZipPath, LPCTSTR IN strFileName)
+{
+	std::wstring_convert<std::codecvt<wchar_t, char, std::mbstate_t>>
+		converter(new std::codecvt<wchar_t, char, std::mbstate_t>("CHS"));
+	std::string strZipPathA = converter.to_bytes(strZipPath);
+	std::string strFileNameA = converter.to_bytes(strFileName);
+	USES_CONVERSION;
+	zipFile newZipFile = zipOpen(strZipPathA.c_str(), APPEND_STATUS_CREATE); //创建zip文件 
+	if (newZipFile == NULL)
+	{
+		return ZipHelperRet::BuildZipFailed;
+	}
+
+	CollectFilesInDirToZip(newZipFile, strFileName, _T(""));
+
+	zipClose(newZipFile, NULL); //关闭zip文件  
+
 	return ZipHelperRet::Success;
 }
 
